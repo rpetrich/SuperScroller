@@ -1,0 +1,6 @@
+{
+	title = "Up";
+	description = "Scroll one page up";
+	group = "SuperScroller";
+	"compatible-modes" = ("application");
+}
