@@ -15,11 +15,15 @@ __attribute__((visibility("hidden")))
 @end
 
 #define kUp "com.rpetrich.superscroller.up"
+#define kAutoUp "com.rpetrich.superscroller.autoup"
 #define kDown "com.rpetrich.superscroller.down"
+#define kAutoDown "com.rpetrich.superscroller.autodown"
 
 static NSMutableSet *scrollableViews;
 static BOOL isActive;
 static int notifyToken;
+static NSTimer *scrollingTimer = nil;
+static BOOL autoscrolling = NO;
 
 enum {
 	UIScrollableDirectionLeft = 1,
@@ -51,6 +55,17 @@ static void ScrollUpNotificationReceived(CFNotificationCenterRef center, void *o
 	}
 }
 
+static void AutoScrollUpNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
+{
+	for (UIScrollView *scrollView in [[scrollableViews copy] autorelease]) {
+		if ([scrollView isKindOfClass:[UIScrollView class]] && ([scrollView scrollableDirections] & UIScrollableDirectionUp)) {
+			autoscrolling = YES;
+			if (!scrollingTimer)
+				scrollingTimer = [NSTimer scheduledTimerWithTimeInterval:(35.0 / 1000.0) target:scrollView selector:@selector(autoscrollUpTimerFired) userInfo:nil repeats:YES];
+		}
+	}
+}
+
 static void ScrollDownNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
 {
 	for (UIScrollView *scrollView in [[scrollableViews copy] autorelease]) {
@@ -66,6 +81,17 @@ static void ScrollDownNotificationReceived(CFNotificationCenterRef center, void 
 	}
 }
 
+static void AutoScrollDownNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
+{
+	for (UIScrollView *scrollView in [[scrollableViews copy] autorelease]) {
+		if ([scrollView isKindOfClass:[UIScrollView class]] && ([scrollView scrollableDirections] & UIScrollableDirectionDown)) {
+			autoscrolling = YES;
+			if (!scrollingTimer)
+				scrollingTimer = [NSTimer scheduledTimerWithTimeInterval:(35.0 / 1000.0) target:scrollView selector:@selector(autoscrollDownTimerFired) userInfo:nil repeats:YES];
+		}
+	}
+}
+
 static void WillEnterForegroundNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
 {
 	notify_set_state(notifyToken, GetScrollableDirections());
@@ -73,7 +99,9 @@ static void WillEnterForegroundNotificationReceived(CFNotificationCenterRef cent
 		isActive = YES;
 		CFNotificationCenterRef darwin = CFNotificationCenterGetDarwinNotifyCenter();
 		CFNotificationCenterAddObserver(darwin, ScrollUpNotificationReceived, ScrollUpNotificationReceived, CFSTR(kUp), NULL, CFNotificationSuspensionBehaviorCoalesce);
+		CFNotificationCenterAddObserver(darwin, AutoScrollUpNotificationReceived, AutoScrollUpNotificationReceived, CFSTR(kAutoUp), NULL, CFNotificationSuspensionBehaviorCoalesce);
 		CFNotificationCenterAddObserver(darwin, ScrollDownNotificationReceived, ScrollDownNotificationReceived, CFSTR(kDown), NULL, CFNotificationSuspensionBehaviorCoalesce);
+		CFNotificationCenterAddObserver(darwin, AutoScrollDownNotificationReceived, AutoScrollDownNotificationReceived, CFSTR(kAutoDown), NULL, CFNotificationSuspensionBehaviorCoalesce);
 	}
 }
 
@@ -83,7 +111,9 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 		isActive = NO;
 		CFNotificationCenterRef darwin = CFNotificationCenterGetDarwinNotifyCenter();
 		CFNotificationCenterRemoveObserver(darwin, ScrollUpNotificationReceived, CFSTR(kUp), NULL);
+		CFNotificationCenterRemoveObserver(darwin, AutoScrollUpNotificationReceived, CFSTR(kAutoUp), NULL);
 		CFNotificationCenterRemoveObserver(darwin, ScrollDownNotificationReceived, CFSTR(kDown), NULL);
+		CFNotificationCenterRemoveObserver(darwin, AutoScrollDownNotificationReceived, CFSTR(kAutoDown), NULL);
 	}
 }
 
@@ -116,6 +146,49 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 	%orig;
 }
 
+- (BOOL)gestureRecognizer:(id)arg1 shouldReceiveTouch:(id)arg2
+{
+	autoscrolling = NO;
+	return %orig;
+}
+
+%new(v@:)
+	- (void)autoscrollUpTimerFired
+{
+	if (!autoscrolling) {
+		[scrollingTimer invalidate];
+		scrollingTimer = nil;
+		return;
+	}
+	CGPoint contentOffset = self.contentOffset;
+	contentOffset.y = self.bounds.origin.y - 1.0f;
+	CGFloat topOffset = -self.contentInset.top;
+	if (contentOffset.y < topOffset) {
+		contentOffset.y = topOffset;
+		autoscrolling = NO;
+	}
+	[self setContentOffset:contentOffset animated:NO];
+}
+
+%new(v@:)
+	- (void)autoscrollDownTimerFired
+{
+	if (!autoscrolling) {
+		[scrollingTimer invalidate];
+		scrollingTimer = nil;
+		return;
+	}
+	CGPoint contentOffset = self.contentOffset;
+	CGFloat height = self.bounds.size.height;
+	contentOffset.y += 1.0f;
+	CGFloat maxY = self.contentSize.height + self.contentInset.bottom - height;
+	if (contentOffset.y > maxY) {
+		contentOffset.y = maxY;
+		autoscrolling = NO;
+	}
+	[self setContentOffset:contentOffset animated:NO];
+}
+
 %end
 
 @implementation SuperScroller
@@ -128,10 +201,16 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 		SuperScroller *scroller = [[self alloc] init];
 		if (![LASharedActivator hasSeenListenerWithName:@kUp])
 			[LASharedActivator assignEvent:[LAEvent eventWithName:LAEventNameVolumeUpPress mode:LAEventModeApplication] toListenerWithName:@kUp];
+		if (![LASharedActivator hasSeenListenerWithName:@kAutoUp])
+			[LASharedActivator assignEvent:[LAEvent eventWithName:LAEventNameVolumeUpHoldShort mode:LAEventModeApplication] toListenerWithName:@kAutoUp];
 		if (![LASharedActivator hasSeenListenerWithName:@kDown])
 			[LASharedActivator assignEvent:[LAEvent eventWithName:LAEventNameVolumeDownPress mode:LAEventModeApplication] toListenerWithName:@kDown];
+		if (![LASharedActivator hasSeenListenerWithName:@kAutoDown])
+			[LASharedActivator assignEvent:[LAEvent eventWithName:LAEventNameVolumeDownHoldShort mode:LAEventModeApplication] toListenerWithName:@kAutoDown];
 		[LASharedActivator registerListener:scroller forName:@kUp];
+		[LASharedActivator registerListener:scroller forName:@kAutoUp];
 		[LASharedActivator registerListener:scroller forName:@kDown];
+		[LASharedActivator registerListener:scroller forName:@kAutoDown];
 	} else {
 		%init;
 		scrollableViews = [[NSMutableSet alloc] init];
@@ -156,6 +235,16 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 		} else if ([listenerName isEqualToString:@kDown]) {
 			if (state & UIScrollableDirectionDown) {
 				notify_post(kDown);
+				event.handled = YES;
+			}
+		} else if ([listenerName isEqualToString:@kAutoUp]) {
+			if (state & UIScrollableDirectionUp) {
+				notify_post(kAutoUp);
+				event.handled = YES;
+			}
+		} else if ([listenerName isEqualToString:@kAutoDown]) {
+			if (state & UIScrollableDirectionDown) {
+				notify_post(kAutoDown);
 				event.handled = YES;
 			}
 		}
