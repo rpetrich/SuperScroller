@@ -250,6 +250,11 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 	[pool drain];
 }
 
++ (NSSet *)scrollableViews
+{
+	return [[scrollableViews copy] autorelease];
+}
+
 - (void)activator:(LAActivator *)activator receiveEvent:(LAEvent *)event forListenerName:(NSString *)listenerName
 {
 	if ([(SpringBoard *)UIApp _accessibilityFrontMostApplication]) {
