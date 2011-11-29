@@ -5,5 +5,5 @@ Architecture: iphoneos-arm
 Version: 0.1
 Description: Paged scrolling via Activator
 Name: SuperScroller
-Depends: firmware (>= 4.0), mobilesubstrate, libactivator (>= 1.5.8~beta2)
+Depends: firmware (>= 4.0), mobilesubstrate, libactivator (>= 1.5.8)
 Author: Ryan Petrich <rpetrich+superscroller@gmail.com>
