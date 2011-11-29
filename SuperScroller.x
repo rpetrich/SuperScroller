@@ -219,6 +219,21 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 
 %end
 
+%group MobileSafari
+
+%hook UIScrollView
+
+- (void)willMoveToWindow:(UIWindow *)window
+{
+	if (window)
+		self.scrollsToTop = YES;
+	%orig;
+}
+
+%end
+
+%end
+
 @implementation SuperScroller
 
 + (void)load
@@ -241,6 +256,9 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 		[LASharedActivator registerListener:scroller forName:@kAutoDown];
 	} else {
 		%init;
+		if ([[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.apple.mobilesafari"]) {
+			%init(MobileSafari);
+		}
 		scrollableViews = [[NSMutableSet alloc] init];
 		CFNotificationCenterRef local = CFNotificationCenterGetLocalCenter();
 		CFNotificationCenterAddObserver(local, WillEnterForegroundNotificationReceived, WillEnterForegroundNotificationReceived, (CFStringRef)UIApplicationDidFinishLaunchingNotification, NULL, CFNotificationSuspensionBehaviorCoalesce);
