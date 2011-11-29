@@ -1,0 +1,6 @@
+{
+	title = "AutoUp";
+	description = "AutoScroll up";
+	group = "SuperScroller";
+	"compatible-modes" = ("application");
+}
