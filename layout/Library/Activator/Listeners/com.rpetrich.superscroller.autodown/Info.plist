@@ -1,6 +1,6 @@
 {
-	title = "AutoDown";
-	description = "AutoScroll down";
+	title = "Autoscroll Down";
+	description = "Continuous scroll downwards";
 	group = "SuperScroller";
 	"compatible-modes" = ("application");
 }
