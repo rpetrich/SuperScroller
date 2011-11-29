@@ -24,6 +24,7 @@ static BOOL isActive;
 static int notifyToken;
 static CFRunLoopTimerRef autoscrollingTimer;
 static UIScrollView *autoscrollingView;
+static CGFloat autoscrollAmount;
 
 enum {
 	UIScrollableDirectionLeft = 1,
@@ -63,7 +64,8 @@ static void StartAutoscroll(UIScrollView *scrollView, CFRunLoopTimerCallBack cal
 	if (!autoscrollingView)
 		autoscrollingView = [scrollView retain];
 	if (!autoscrollingTimer) {
-		autoscrollingTimer = CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent(), 35.0 / 1000.0, 0, 0, callback, NULL);
+		autoscrollAmount = [UIScreen instancesRespondToSelector:@selector(scale)] ? (1.0f / [UIScreen mainScreen].scale) : 1.0f;
+		autoscrollingTimer = CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent(), (35.0 / 1000.0) * autoscrollAmount, 0, 0, callback, NULL);
 		CFRunLoopRef runLoop = CFRunLoopGetMain();
 		CFRunLoopAddTimer(runLoop, autoscrollingTimer, kCFRunLoopCommonModes);
 		CFRunLoopAddTimer(runLoop, autoscrollingTimer, (CFStringRef)UITrackingRunLoopMode);
@@ -88,7 +90,7 @@ static void ScrollUpNotificationReceived(CFNotificationCenterRef center, void *o
 static void AutoscrollUpTimerCallback(CFRunLoopTimerRef timer, void *info)
 {
 	CGPoint contentOffset = autoscrollingView.contentOffset;
-	contentOffset.y = autoscrollingView.bounds.origin.y - 1.0f;
+	contentOffset.y = autoscrollingView.bounds.origin.y - autoscrollAmount;
 	CGFloat topOffset = -autoscrollingView.contentInset.top;
 	if (contentOffset.y < topOffset) {
 		contentOffset.y = topOffset;
@@ -131,7 +133,7 @@ static void AutoscrollDownTimerCallback(CFRunLoopTimerRef timer, void *info)
 {
 	CGPoint contentOffset = autoscrollingView.contentOffset;
 	CGFloat height = autoscrollingView.bounds.size.height;
-	contentOffset.y += 1.0f;
+	contentOffset.y += autoscrollAmount;
 	CGFloat maxY = autoscrollingView.contentSize.height + autoscrollingView.contentInset.bottom - height;
 	if (contentOffset.y > maxY) {
 		contentOffset.y = maxY;
