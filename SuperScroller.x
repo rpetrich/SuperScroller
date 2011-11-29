@@ -22,8 +22,8 @@ __attribute__((visibility("hidden")))
 static NSMutableSet *scrollableViews;
 static BOOL isActive;
 static int notifyToken;
-static NSTimer *scrollingTimer = nil;
-static BOOL autoscrolling = NO;
+static CFRunLoopTimerRef autoscrollingTimer;
+static UIScrollView *autoscrollingView;
 
 enum {
 	UIScrollableDirectionLeft = 1,
@@ -41,6 +41,36 @@ static inline int GetScrollableDirections()
 	return result;
 }
 
+static void KillAutoscroll()
+{
+	if (autoscrollingView) {
+		[autoscrollingView release];
+		autoscrollingView = nil;
+	}
+	if (autoscrollingTimer) {
+		CFRunLoopRef runLoop = CFRunLoopGetMain();
+		CFRunLoopRemoveTimer(runLoop, autoscrollingTimer, kCFRunLoopCommonModes); 
+		CFRunLoopRemoveTimer(runLoop, autoscrollingTimer, (CFStringRef)UITrackingRunLoopMode); 
+		CFRunLoopTimerInvalidate(autoscrollingTimer);
+		CFRelease(autoscrollingTimer);
+		autoscrollingTimer = NULL;
+		[UIApp popRunLoopMode:UITrackingRunLoopMode];
+	}
+}
+
+static void StartAutoscroll(UIScrollView *scrollView, CFRunLoopTimerCallBack callback)
+{
+	if (!autoscrollingView)
+		autoscrollingView = [scrollView retain];
+	if (!autoscrollingTimer) {
+		autoscrollingTimer = CFRunLoopTimerCreate(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent(), 35.0 / 1000.0, 0, 0, callback, NULL);
+		CFRunLoopRef runLoop = CFRunLoopGetMain();
+		CFRunLoopAddTimer(runLoop, autoscrollingTimer, kCFRunLoopCommonModes);
+		CFRunLoopAddTimer(runLoop, autoscrollingTimer, (CFStringRef)UITrackingRunLoopMode);
+		[UIApp pushRunLoopMode:UITrackingRunLoopMode];
+	}
+}
+
 static void ScrollUpNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
 {
 	for (UIScrollView *scrollView in [[scrollableViews copy] autorelease]) {
@@ -55,13 +85,29 @@ static void ScrollUpNotificationReceived(CFNotificationCenterRef center, void *o
 	}
 }
 
+static void AutoscrollUpTimerCallback(CFRunLoopTimerRef timer, void *info)
+{
+	CGPoint contentOffset = autoscrollingView.contentOffset;
+	contentOffset.y = autoscrollingView.bounds.origin.y - 1.0f;
+	CGFloat topOffset = -autoscrollingView.contentInset.top;
+	if (contentOffset.y < topOffset) {
+		contentOffset.y = topOffset;
+		[autoscrollingView setContentOffset:contentOffset animated:NO];
+		KillAutoscroll();
+	} else {
+		[autoscrollingView setContentOffset:contentOffset animated:NO];
+	}
+}
+
 static void AutoScrollUpNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
 {
 	for (UIScrollView *scrollView in [[scrollableViews copy] autorelease]) {
 		if ([scrollView isKindOfClass:[UIScrollView class]] && ([scrollView scrollableDirections] & UIScrollableDirectionUp)) {
-			autoscrolling = YES;
-			if (!scrollingTimer)
-				scrollingTimer = [NSTimer scheduledTimerWithTimeInterval:(35.0 / 1000.0) target:scrollView selector:@selector(autoscrollUpTimerFired) userInfo:nil repeats:YES];
+			if (autoscrollingTimer)
+				KillAutoscroll();
+			else
+				StartAutoscroll(scrollView, AutoscrollUpTimerCallback);
+			break;
 		}
 	}
 }
@@ -81,13 +127,30 @@ static void ScrollDownNotificationReceived(CFNotificationCenterRef center, void 
 	}
 }
 
+static void AutoscrollDownTimerCallback(CFRunLoopTimerRef timer, void *info)
+{
+	CGPoint contentOffset = autoscrollingView.contentOffset;
+	CGFloat height = autoscrollingView.bounds.size.height;
+	contentOffset.y += 1.0f;
+	CGFloat maxY = autoscrollingView.contentSize.height + autoscrollingView.contentInset.bottom - height;
+	if (contentOffset.y > maxY) {
+		contentOffset.y = maxY;
+		[autoscrollingView setContentOffset:contentOffset animated:NO];
+		KillAutoscroll();
+	} else {
+		[autoscrollingView setContentOffset:contentOffset animated:NO];
+	}
+}
+
 static void AutoScrollDownNotificationReceived(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
 {
 	for (UIScrollView *scrollView in [[scrollableViews copy] autorelease]) {
 		if ([scrollView isKindOfClass:[UIScrollView class]] && ([scrollView scrollableDirections] & UIScrollableDirectionDown)) {
-			autoscrolling = YES;
-			if (!scrollingTimer)
-				scrollingTimer = [NSTimer scheduledTimerWithTimeInterval:(35.0 / 1000.0) target:scrollView selector:@selector(autoscrollDownTimerFired) userInfo:nil repeats:YES];
+			if (autoscrollingTimer)
+				KillAutoscroll();
+			else 
+				StartAutoscroll(scrollView, AutoscrollDownTimerCallback);
+			break;
 		}
 	}
 }
@@ -146,47 +209,10 @@ static void DidEnterBackgroundNotificationReceived(CFNotificationCenterRef cente
 	%orig;
 }
 
-- (BOOL)gestureRecognizer:(id)arg1 shouldReceiveTouch:(id)arg2
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch
 {
-	autoscrolling = NO;
+	KillAutoscroll();
 	return %orig;
-}
-
-%new(v@:)
-	- (void)autoscrollUpTimerFired
-{
-	if (!autoscrolling) {
-		[scrollingTimer invalidate];
-		scrollingTimer = nil;
-		return;
-	}
-	CGPoint contentOffset = self.contentOffset;
-	contentOffset.y = self.bounds.origin.y - 1.0f;
-	CGFloat topOffset = -self.contentInset.top;
-	if (contentOffset.y < topOffset) {
-		contentOffset.y = topOffset;
-		autoscrolling = NO;
-	}
-	[self setContentOffset:contentOffset animated:NO];
-}
-
-%new(v@:)
-	- (void)autoscrollDownTimerFired
-{
-	if (!autoscrolling) {
-		[scrollingTimer invalidate];
-		scrollingTimer = nil;
-		return;
-	}
-	CGPoint contentOffset = self.contentOffset;
-	CGFloat height = self.bounds.size.height;
-	contentOffset.y += 1.0f;
-	CGFloat maxY = self.contentSize.height + self.contentInset.bottom - height;
-	if (contentOffset.y > maxY) {
-		contentOffset.y = maxY;
-		autoscrolling = NO;
-	}
-	[self setContentOffset:contentOffset animated:NO];
 }
 
 %end
