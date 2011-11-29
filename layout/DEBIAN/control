@@ -1,9 +1,13 @@
 Package: com.rpetrich.superscroller
-Priority: optional
-Section: System
-Architecture: iphoneos-arm
-Version: 0.1
-Description: Paged scrolling via Activator
 Name: SuperScroller
 Depends: firmware (>= 4.0), mobilesubstrate, libactivator (>= 1.5.8)
+Version: 1.0
+Architecture: iphoneos-arm
+Description: Paged scrolling via Activator
+Maintainer: thebigboss.org <http://thebigboss.org>
 Author: Ryan Petrich <rpetrich+superscroller@gmail.com>
+Section: Tweaks
+Tag: purpose::extension
+Homepage: http://moreinfo.thebigboss.org/moreinfo/depiction.php?file=superscrollerDp
+Depiction: http://moreinfo.thebigboss.org/moreinfo/depiction.php?file=superscrollerDp
+dev: rpetrich
